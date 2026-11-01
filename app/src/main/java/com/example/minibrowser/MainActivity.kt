@@ -20,7 +20,6 @@ import android.view.inputmethod.InputMethodManager
 import android.webkit.*
 import android.widget.*
 import java.net.URLEncoder
-import kotlin.math.max
 
 private const val STRIP = 0xFFFDF8FD.toInt()
 private const val ICON = 0xFF8F8DA3.toInt()
@@ -103,23 +102,26 @@ class MainActivity : Activity() {
         root.orientation = LinearLayout.VERTICAL
         root.setBackgroundColor(DARK)
 
-        val stripH = max(dp(40), (resources.displayMetrics.heightPixels * 0.06f).toInt())
+        val stripH = dp(26)
         val strip = FrameLayout(this)
         strip.setBackgroundColor(STRIP)
         val power = PowerView(this)
         power.contentDescription = "Close page"
         power.setOnClickListener { closePage() }
-        val powerLp = FrameLayout.LayoutParams(dp(24), dp(24), Gravity.END or Gravity.BOTTOM)
+        val powerLp = FrameLayout.LayoutParams(dp(20), dp(20), Gravity.END or Gravity.BOTTOM)
         powerLp.rightMargin = dp(16)
-        powerLp.bottomMargin = dp(8)
+        powerLp.bottomMargin = dp(5)
         strip.addView(power, powerLp)
         val stripLp = LinearLayout.LayoutParams(MATCH_PARENT, stripH)
         root.addView(strip, stripLp)
         @Suppress("DEPRECATION")
         root.setOnApplyWindowInsetsListener { v, insets ->
-            stripLp.height = stripH + insets.systemWindowInsetTop
-            strip.layoutParams = stripLp
-            strip.setPadding(0, insets.systemWindowInsetTop, 0, 0)
+            val h = stripH + insets.systemWindowInsetTop
+            if (stripLp.height != h) {
+                stripLp.height = h
+                strip.layoutParams = stripLp
+                strip.setPadding(0, insets.systemWindowInsetTop, 0, 0)
+            }
             v.setPadding(0, 0, 0, insets.systemWindowInsetBottom)
             insets
         }
@@ -133,6 +135,7 @@ class MainActivity : Activity() {
         web.setBackgroundColor(Color.WHITE)
         val st = web.settings
         st.javaScriptEnabled = true
+        st.textZoom = 100
         st.domStorageEnabled = true
         st.useWideViewPort = true
         st.loadWithOverviewMode = true
