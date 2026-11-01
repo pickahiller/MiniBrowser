@@ -64,16 +64,17 @@ class MainActivity : Activity() {
 
     @Suppress("DEPRECATION")
     private fun applyBars() {
-        window.decorView.systemUiVisibility = if (hideBars) {
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-                View.SYSTEM_UI_FLAG_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
-        } else {
+        val base = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
             View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        window.decorView.systemUiVisibility = if (hideBars) {
+            base or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+        } else {
+            base
         }
         root.requestApplyInsets()
     }
@@ -89,8 +90,9 @@ class MainActivity : Activity() {
         val prefs = getSharedPreferences("mb", MODE_PRIVATE)
         hideBars = prefs.getBoolean("hide_status", false)
 
-        window.setBackgroundDrawable(ColorDrawable(STRIP))
+        window.setBackgroundDrawable(ColorDrawable(DARK))
         window.statusBarColor = STRIP
+        window.navigationBarColor = DARK
         if (Build.VERSION.SDK_INT >= 28) {
             val lp = window.attributes
             lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
@@ -99,8 +101,7 @@ class MainActivity : Activity() {
 
         root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
-        root.setBackgroundColor(STRIP)
-        root.fitsSystemWindows = true
+        root.setBackgroundColor(DARK)
 
         val stripH = max(dp(40), (resources.displayMetrics.heightPixels * 0.06f).toInt())
         val strip = FrameLayout(this)
@@ -112,7 +113,16 @@ class MainActivity : Activity() {
         powerLp.rightMargin = dp(16)
         powerLp.bottomMargin = dp(8)
         strip.addView(power, powerLp)
-        root.addView(strip, LinearLayout.LayoutParams(MATCH_PARENT, stripH))
+        val stripLp = LinearLayout.LayoutParams(MATCH_PARENT, stripH)
+        root.addView(strip, stripLp)
+        @Suppress("DEPRECATION")
+        root.setOnApplyWindowInsetsListener { v, insets ->
+            stripLp.height = stripH + insets.systemWindowInsetTop
+            strip.layoutParams = stripLp
+            strip.setPadding(0, insets.systemWindowInsetTop, 0, 0)
+            v.setPadding(0, 0, 0, insets.systemWindowInsetBottom)
+            insets
+        }
 
         val stage = FrameLayout(this)
         stage.setBackgroundColor(DARK)
