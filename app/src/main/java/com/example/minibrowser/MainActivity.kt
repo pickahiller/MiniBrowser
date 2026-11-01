@@ -4,7 +4,9 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.graphics.*
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.Bundle
 import android.text.InputType
 import android.util.TypedValue
@@ -53,10 +55,23 @@ class MainActivity : Activity() {
         if (stroke != 0) setStroke(dp(1), stroke)
     }
 
+    @Suppress("DEPRECATION")
     private fun applyStatusBar(hide: Boolean) {
-        if (hide) window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-        else window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        var flags = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        if (hide) {
+            flags = flags or View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        }
+        window.decorView.systemUiVisibility = flags
         root.requestApplyInsets()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            applyStatusBar(getSharedPreferences("mb", MODE_PRIVATE).getBoolean("hide_status", false))
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -64,14 +79,19 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences("mb", MODE_PRIVATE)
         window.statusBarColor = STRIP
-        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        window.setBackgroundDrawable(ColorDrawable(STRIP))
+        if (Build.VERSION.SDK_INT >= 28) {
+            val lp = window.attributes
+            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            window.attributes = lp
+        }
 
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(STRIP); fitsSystemWindows = true
         }
 
-        // White strip (half the old height) with the small power icon at the bottom right
+        // White strip with the small power icon at the bottom right
         val stripH = max(dp(40), (resources.displayMetrics.heightPixels * 0.06f).toInt())
         val strip = FrameLayout(this).apply { setBackgroundColor(STRIP) }
         val power = PowerView(this).apply {
@@ -95,130 +115,3 @@ class MainActivity : Activity() {
                 domStorageEnabled = true
                 useWideViewPort = true
                 loadWithOverviewMode = true
-                setSupportZoom(true)
-                builtInZoomControls = true
-                displayZoomControls = false
-                mediaPlaybackRequiresUserGesture = false
-                mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-            }
-            CookieManager.getInstance().setAcceptCookie(true)
-            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-            webChromeClient = WebChromeClient()
-            webViewClient = object : WebViewClient() {
-                override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
-                    val s = r.url.scheme ?: return true
-                    return !(s == "http" || s == "https")
-                }
-            }
-        }
-        stage.addView(web, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
-
-        // Address dialog
-        overlay = FrameLayout(this).apply {
-            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xFF0F2A45.toInt(), DARK))
-            setPadding(dp(16), dp(16), dp(16), dp(16))
-        }
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = rounded(0xFF07090D.toInt(), 18)
-            clipToOutline = true
-        }
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(ACCENT); setPadding(dp(18), dp(16), dp(18), dp(16))
-        }
-        header.addView(TextView(this).apply {
-            text = "Open a website"; setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 19f); setTypeface(typeface, Typeface.BOLD)
-        })
-        header.addView(TextView(this).apply {
-            text = "Type any address or search"; setTextColor(0xE6FFFFFF.toInt())
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-        })
-        card.addView(header)
-
-        val body = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(18), dp(18), dp(18))
-        }
-        body.addView(TextView(this).apply {
-            text = "Website"; setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, 0, 0, dp(8))
-        })
-        input = EditText(this).apply {
-            hint = "example.com"; setHintTextColor(0xFF6B7587.toInt()); setTextColor(Color.WHITE)
-            background = rounded(FIELD, 12, LINE)
-            setPadding(dp(14), dp(14), dp(14), dp(14))
-            setSingleLine(true)
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            imeOptions = EditorInfo.IME_ACTION_GO
-            setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_GO) { openPage(); true } else false }
-        }
-        body.addView(input, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-
-        // Hide status bar option
-        val hideBox = CheckBox(this).apply {
-            text = "Hide status bar"; setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            isChecked = prefs.getBoolean("hide_status", false)
-            setOnCheckedChangeListener { _, checked ->
-                prefs.edit().putBoolean("hide_status", checked).apply()
-                applyStatusBar(checked)
-            }
-        }
-        body.addView(hideBox, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(12) })
-
-        fun btn(label: String, bg: Int, border: Int, click: () -> Unit) = Button(this).apply {
-            text = label; isAllCaps = false; setTextColor(Color.WHITE)
-            background = rounded(bg, 10, border); setOnClickListener { click() }
-        }
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        row.addView(btn("Clear", FIELD, LINE) { input.setText(""); input.requestFocus() },
-            LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(6) })
-        row.addView(btn("Open", ACCENT, ACCENT) { openPage() },
-            LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(6) })
-        body.addView(row, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(14) })
-        card.addView(body)
-
-        overlay.addView(card, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.CENTER))
-        stage.addView(overlay, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
-
-        setContentView(root)
-        applyStatusBar(prefs.getBoolean("hide_status", false))
-    }
-
-    private fun normalize(t: String): String {
-        val s = t.trim()
-        if (s.isEmpty()) return ""
-        if (Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://.*").matches(s)) return s
-        if (Regex("^\\S+\\.[a-zA-Z]{2,}([/?#].*)?$").matches(s) || s.startsWith("localhost")) return "https://$s"
-        return "https://duckduckgo.com/?q=" + URLEncoder.encode(s, "UTF-8")
-    }
-
-    private fun openPage() {
-        val url = normalize(input.text.toString())
-        if (url.isEmpty()) return
-        (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
-            .hideSoftInputFromWindow(input.windowToken, 0)
-        overlay.visibility = View.GONE
-        web.visibility = View.VISIBLE
-        web.loadUrl(url)
-    }
-
-    private fun closePage() {
-        web.loadUrl("about:blank")
-        web.clearHistory()
-        web.visibility = View.GONE
-        overlay.visibility = View.VISIBLE
-        input.setText("")
-    }
-
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
-        when {
-            overlay.visibility == View.VISIBLE -> super.onBackPressed()
-            web.canGoBack() -> web.goBack()
-            else -> closePage()
-        }
-    }
-}
