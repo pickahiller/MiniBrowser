@@ -12,6 +12,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.webkit.*
@@ -41,6 +42,7 @@ class PowerView(c: Context) : View(c) {
 }
 
 class MainActivity : Activity() {
+    private lateinit var root: LinearLayout
     private lateinit var web: WebView
     private lateinit var overlay: FrameLayout
     private lateinit var input: EditText
@@ -51,26 +53,33 @@ class MainActivity : Activity() {
         if (stroke != 0) setStroke(dp(1), stroke)
     }
 
+    private fun applyStatusBar(hide: Boolean) {
+        if (hide) window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        root.requestApplyInsets()
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val prefs = getSharedPreferences("mb", MODE_PRIVATE)
         window.statusBarColor = STRIP
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
 
-        val root = LinearLayout(this).apply {
+        root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(STRIP); fitsSystemWindows = true
         }
 
-        // White strip with the small power icon at the bottom right
-        val stripH = max(dp(84), (resources.displayMetrics.heightPixels * 0.13f).toInt())
+        // White strip (half the old height) with the small power icon at the bottom right
+        val stripH = max(dp(40), (resources.displayMetrics.heightPixels * 0.06f).toInt())
         val strip = FrameLayout(this).apply { setBackgroundColor(STRIP) }
         val power = PowerView(this).apply {
             setOnClickListener { closePage() }
             contentDescription = "Close page"
         }
         strip.addView(power, FrameLayout.LayoutParams(dp(24), dp(24), Gravity.END or Gravity.BOTTOM).apply {
-            rightMargin = dp(16); bottomMargin = dp(10)
+            rightMargin = dp(16); bottomMargin = dp(8)
         })
         root.addView(strip, LinearLayout.LayoutParams(MATCH_PARENT, stripH))
 
@@ -147,6 +156,18 @@ class MainActivity : Activity() {
         }
         body.addView(input, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
 
+        // Hide status bar option
+        val hideBox = CheckBox(this).apply {
+            text = "Hide status bar"; setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            isChecked = prefs.getBoolean("hide_status", false)
+            setOnCheckedChangeListener { _, checked ->
+                prefs.edit().putBoolean("hide_status", checked).apply()
+                applyStatusBar(checked)
+            }
+        }
+        body.addView(hideBox, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(12) })
+
         fun btn(label: String, bg: Int, border: Int, click: () -> Unit) = Button(this).apply {
             text = label; isAllCaps = false; setTextColor(Color.WHITE)
             background = rounded(bg, 10, border); setOnClickListener { click() }
@@ -156,13 +177,14 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(6) })
         row.addView(btn("Open", ACCENT, ACCENT) { openPage() },
             LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(6) })
-        body.addView(row, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(18) })
+        body.addView(row, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(14) })
         card.addView(body)
 
         overlay.addView(card, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.CENTER))
         stage.addView(overlay, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
 
         setContentView(root)
+        applyStatusBar(prefs.getBoolean("hide_status", false))
     }
 
     private fun normalize(t: String): String {
