@@ -48,6 +48,7 @@ class MainActivity : Activity() {
     private lateinit var web: WebView
     private lateinit var overlay: FrameLayout
     private lateinit var input: EditText
+    private var hideBars = false
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun rounded(color: Int, r: Int, stroke: Int = 0) = GradientDrawable().apply {
@@ -56,30 +57,35 @@ class MainActivity : Activity() {
     }
 
     @Suppress("DEPRECATION")
-    private fun applyStatusBar(hide: Boolean) {
-        var flags = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
-        if (hide) {
-            flags = flags or View.SYSTEM_UI_FLAG_FULLSCREEN or
+    private fun applyBars() {
+        window.decorView.systemUiVisibility = if (hideBars) {
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                View.SYSTEM_UI_FLAG_FULLSCREEN or
                 View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        } else {
+            View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
         }
-        window.decorView.systemUiVisibility = flags
         root.requestApplyInsets()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) {
-            applyStatusBar(getSharedPreferences("mb", MODE_PRIVATE).getBoolean("hide_status", false))
-        }
+        if (hasFocus) applyBars()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences("mb", MODE_PRIVATE)
-        window.statusBarColor = STRIP
+        hideBars = prefs.getBoolean("hide_status", false)
+
+        // Paint everything white behind the bars and the camera notch (no black)
         window.setBackgroundDrawable(ColorDrawable(STRIP))
+        window.statusBarColor = STRIP
         if (Build.VERSION.SDK_INT >= 28) {
             val lp = window.attributes
             lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
@@ -98,20 +104,4 @@ class MainActivity : Activity() {
             setOnClickListener { closePage() }
             contentDescription = "Close page"
         }
-        strip.addView(power, FrameLayout.LayoutParams(dp(24), dp(24), Gravity.END or Gravity.BOTTOM).apply {
-            rightMargin = dp(16); bottomMargin = dp(8)
-        })
-        root.addView(strip, LinearLayout.LayoutParams(MATCH_PARENT, stripH))
-
-        val stage = FrameLayout(this).apply { setBackgroundColor(DARK) }
-        root.addView(stage, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
-
-        // The real browser view (no embedding limits)
-        web = WebView(this).apply {
-            visibility = View.GONE
-            setBackgroundColor(Color.WHITE)
-            settings.apply {
-                javaScriptEnabled = true
-                domStorageEnabled = true
-                useWideViewPort = true
-                loadWithOverviewMode = true
+        strip.addView(power, FrameLayout.LayoutParams(dp(24), dp(24), Gravity.END or Gravity.BOTTOM).apply
