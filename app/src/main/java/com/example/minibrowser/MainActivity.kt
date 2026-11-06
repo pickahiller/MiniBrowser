@@ -91,7 +91,8 @@ class MainActivity : Activity() {
 
         window.setBackgroundDrawable(ColorDrawable(DARK))
         window.statusBarColor = STRIP
-        window.navigationBarColor = DARK
+        window.navigationBarColor = Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
         if (Build.VERSION.SDK_INT >= 28) {
             val lp = window.attributes
             lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
@@ -122,7 +123,19 @@ class MainActivity : Activity() {
                 strip.layoutParams = stripLp
                 strip.setPadding(0, insets.systemWindowInsetTop, 0, 0)
             }
-            v.setPadding(0, 0, 0, insets.systemWindowInsetBottom)
+            val bottom = insets.systemWindowInsetBottom
+            var pad = bottom
+            if (web.visibility == View.VISIBLE) {
+                // Website open: draw under the navigation bar, only leave room for the keyboard
+                pad = if (Build.VERSION.SDK_INT >= 30) {
+                    insets.getInsets(android.view.WindowInsets.Type.ime()).bottom
+                } else if (bottom > dp(150)) {
+                    bottom
+                } else {
+                    0
+                }
+            }
+            v.setPadding(0, 0, 0, pad)
             insets
         }
 
@@ -293,6 +306,7 @@ class MainActivity : Activity() {
         web.visibility = View.GONE
         overlay.visibility = View.VISIBLE
         input.setText("")
+        root.requestApplyInsets()
     }
 
     @Deprecated("Deprecated in Java")
