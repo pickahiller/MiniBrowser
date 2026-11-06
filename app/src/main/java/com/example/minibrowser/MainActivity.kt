@@ -72,6 +72,11 @@ class MainActivity : Activity() {
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
                 View.SYSTEM_UI_FLAG_FULLSCREEN or
                 View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+        } else if (::web.isInitialized && web.visibility == View.VISIBLE) {
+            // Website open: always hide the navigation buttons so the page is truly fullscreen
+            base or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
         } else {
             base
         }
@@ -136,7 +141,10 @@ class MainActivity : Activity() {
                 }
             }
             v.setPadding(0, 0, 0, pad)
-            insets
+            // Hide the status bar / notch area from the website, so sites don't add their own bar for it
+            var out = insets.consumeSystemWindowInsets().consumeStableInsets()
+            if (Build.VERSION.SDK_INT >= 28) out = out.consumeDisplayCutout()
+            out
         }
 
         val stage = FrameLayout(this)
@@ -306,7 +314,7 @@ class MainActivity : Activity() {
         web.visibility = View.GONE
         overlay.visibility = View.VISIBLE
         input.setText("")
-        root.requestApplyInsets()
+        applyBars()
     }
 
     @Deprecated("Deprecated in Java")
