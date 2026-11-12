@@ -329,18 +329,32 @@ class MainActivity : Activity() {
         return when (spoofMode) {
             1 -> """
 (function(){
-  Object.defineProperty(document,'visibilityState',{get:function(){return'visible'},configurable:true});
-  Object.defineProperty(document,'hidden',{get:function(){return false},configurable:true});
-  document.addEventListener('visibilitychange',function(e){e.stopImmediatePropagation();},true);
+  var def=function(p,v,h){
+    Object.defineProperty(document,p,{get:function(){return v},configurable:true});
+    Object.defineProperty(document,h,{get:function(){return false},configurable:true});
+  };
+  def('visibilityState','visible','hidden');
+  def('webkitVisibilityState','visible','webkitHidden');
+  ['visibilitychange','webkitvisibilitychange'].forEach(function(t){
+    document.addEventListener(t,function(e){e.stopImmediatePropagation();},true);
+  });
   document.dispatchEvent(new Event('visibilitychange'));
+  document.dispatchEvent(new Event('webkitvisibilitychange'));
 })();
 """
             2 -> """
 (function(){
-  Object.defineProperty(document,'visibilityState',{get:function(){return'hidden'},configurable:true});
-  Object.defineProperty(document,'hidden',{get:function(){return true},configurable:true});
-  document.addEventListener('visibilitychange',function(e){e.stopImmediatePropagation();},true);
+  var def=function(p,v,h){
+    Object.defineProperty(document,p,{get:function(){return v},configurable:true});
+    Object.defineProperty(document,h,{get:function(){return true},configurable:true});
+  };
+  def('visibilityState','hidden','hidden');
+  def('webkitVisibilityState','hidden','webkitHidden');
+  ['visibilitychange','webkitvisibilitychange'].forEach(function(t){
+    document.addEventListener(t,function(e){e.stopImmediatePropagation();},true);
+  });
   document.dispatchEvent(new Event('visibilitychange'));
+  document.dispatchEvent(new Event('webkitvisibilitychange'));
 })();
 """
             else -> ""
