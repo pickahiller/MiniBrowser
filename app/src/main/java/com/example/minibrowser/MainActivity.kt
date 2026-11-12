@@ -50,6 +50,8 @@ class MainActivity : Activity() {
     private lateinit var overlay: FrameLayout
     private lateinit var input: EditText
     private var hideBars = false
+    // 0 = off, 1 = always visible, 2 = always hidden
+    private var spoofMode = 0
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
@@ -93,6 +95,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences("mb", MODE_PRIVATE)
         hideBars = prefs.getBoolean("hide_status", false)
+        spoofMode = prefs.getInt("spoof_mode", 0)
 
         window.setBackgroundDrawable(ColorDrawable(DARK))
         window.statusBarColor = STRIP
@@ -173,6 +176,10 @@ class MainActivity : Activity() {
                 val s = r.url.scheme ?: return true
                 return !(s == "http" || s == "https")
             }
+            override fun onPageFinished(v: WebView, url: String) {
+                val js = spoofJs()
+                if (js.isNotEmpty()) v.evaluateJavascript(js, null)
+            }
         }
         stage.addView(web, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
 
@@ -252,6 +259,35 @@ class MainActivity : Activity() {
         hideLp.topMargin = dp(12)
         body.addView(hideBox, hideLp)
 
+        // Visibility spoof spinner
+        val spoofLabel = TextView(this)
+        spoofLabel.text = "Visibility spoof"
+        spoofLabel.setTextColor(Color.WHITE)
+        spoofLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+        spoofLabel.setTypeface(spoofLabel.typeface, Typeface.BOLD)
+        val spoofLp0 = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
+        spoofLp0.topMargin = dp(14)
+        body.addView(spoofLabel, spoofLp0)
+
+        val spoofSpinner = Spinner(this)
+        val spoofOpts = arrayOf("Off", "Always visible", "Always hidden")
+        val spoofAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, spoofOpts)
+        spoofAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spoofSpinner.adapter = spoofAdapter
+        spoofSpinner.setSelection(prefs.getInt("spoof_mode", 0))
+        spoofSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p: android.widget.AdapterView<*>, v: View?, pos: Int, id: Long) {
+                spoofMode = pos
+                prefs.edit().putInt("spoof_mode", pos).apply()
+                val js = spoofJs()
+                if (js.isNotEmpty() && web.visibility == View.VISIBLE) web.evaluateJavascript(js, null)
+            }
+            override fun onNothingSelected(p: android.widget.AdapterView<*>) {}
+        }
+        val spoofLp1 = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
+        spoofLp1.topMargin = dp(6)
+        body.addView(spoofSpinner, spoofLp1)
+
         val clearBtn = Button(this)
         clearBtn.text = "Clear"
         clearBtn.isAllCaps = false
@@ -287,6 +323,28 @@ class MainActivity : Activity() {
 
         setContentView(root)
         applyBars()
+    }
+
+    private fun spoofJs(): String {
+        return when (spoofMode) {
+            1 -> """
+(function(){
+  Object.defineProperty(document,'visibilityState',{get:function(){return'visible'},configurable:true});
+  Object.defineProperty(document,'hidden',{get:function(){return false},configurable:true});
+  document.addEventListener('visibilitychange',function(e){e.stopImmediatePropagation();},true);
+  document.dispatchEvent(new Event('visibilitychange'));
+})();
+"""
+            2 -> """
+(function(){
+  Object.defineProperty(document,'visibilityState',{get:function(){return'hidden'},configurable:true});
+  Object.defineProperty(document,'hidden',{get:function(){return true},configurable:true});
+  document.addEventListener('visibilitychange',function(e){e.stopImmediatePropagation();},true);
+  document.dispatchEvent(new Event('visibilitychange'));
+})();
+"""
+            else -> ""
+        }
     }
 
     private fun normalize(t: String): String {
