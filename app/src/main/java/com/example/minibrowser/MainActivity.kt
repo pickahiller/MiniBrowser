@@ -17,6 +17,8 @@ import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import android.content.ComponentName
+import android.content.ServiceConnection
 import android.webkit.*
 import android.widget.*
 import java.net.URLEncoder
@@ -52,6 +54,11 @@ class MainActivity : Activity() {
     private var hideBars = false
     // 0 = off, 1 = always visible, 2 = always hidden
     private var spoofMode = 0
+
+    private val conn = object : ServiceConnection {
+        override fun onServiceConnected(n: ComponentName, b: IBinder) {}
+        override fun onServiceDisconnected(n: ComponentName) {}
+    }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
@@ -323,6 +330,9 @@ class MainActivity : Activity() {
 
         setContentView(root)
         applyBars()
+        val svc = android.content.Intent(this, BrowserService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(svc) else startService(svc)
+        bindService(svc, conn, BIND_AUTO_CREATE)
     }
 
     private fun spoofJs(): String {
@@ -387,6 +397,11 @@ class MainActivity : Activity() {
         overlay.visibility = View.VISIBLE
         input.setText("")
         applyBars()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try { unbindService(conn) } catch (_: Exception) {}
     }
 
     @Deprecated("Deprecated in Java")
