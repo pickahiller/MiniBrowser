@@ -320,10 +320,10 @@ class MainActivity : Activity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        when {
-            overlay.visibility == View.VISIBLE -> super.onBackPressed()
-            svc?.goBack() == true -> Unit
-            else -> closePage()
+        if (overlay.visibility == View.VISIBLE) {
+            super.onBackPressed()
+        } else if (svc?.goBack() != true) {
+            closePage()
         }
     }
 }
