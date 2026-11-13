@@ -2,12 +2,16 @@ package com.example.minibrowser
 
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.content.pm.PackageManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
-import android.graphics.*
+import android.content.pm.PackageManager
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -23,8 +27,15 @@ import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
-import android.webkit.WebView
-import android.widget.*
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.Button
+import android.widget.CheckBox
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.Spinner
+import android.widget.TextView
 
 private const val STRIP  = 0xFFFDF8FD.toInt()
 private const val ICON   = 0xFF8F8DA3.toInt()
@@ -54,49 +65,57 @@ class MainActivity : Activity() {
     private lateinit var overlay: FrameLayout
     private lateinit var input: EditText
 
-    private var svc: BrowserService? = null
+    private var service: BrowserService? = null
     private var hideBars = false
     private var spoofMode = 0
     private var siteOpen = false
 
     private val conn = object : ServiceConnection {
         override fun onServiceConnected(n: ComponentName, b: IBinder) {
-            svc = (b as BrowserService.LocalBinder).get()
-            svc!!.spoofMode = spoofMode
-            // Attach the service's WebView into our stage
-            val wv = svc!!.webView ?: return
-            (wv.parent as? ViewGroup)?.removeView(wv)
-            stage.addView(wv, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
-            if (wv.url != null && wv.url != "about:blank") {
-                siteOpen = true
-                overlay.visibility = View.GONE
-                wv.visibility = View.VISIBLE
-                applyBars()
-            }
+            service = (b as BrowserService.LocalBinder).get()
+            service!!.spoofMode = spoofMode
+            attachWebView()
         }
-        override fun onServiceDisconnected(n: ComponentName) { svc = null }
+        override fun onServiceDisconnected(n: ComponentName) {
+            service = null
+        }
+    }
+
+    private fun attachWebView() {
+        val wv = service?.webView ?: return
+        (wv.parent as? ViewGroup)?.removeView(wv)
+        stage.addView(wv, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        if (siteOpen) {
+            overlay.visibility = View.GONE
+            wv.visibility = View.VISIBLE
+            applyBars()
+        }
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
-    private fun rounded(color: Int, r: Int, stroke: Int = 0) = GradientDrawable().apply {
-        setColor(color); cornerRadius = dp(r).toFloat()
-        if (stroke != 0) setStroke(dp(1), stroke)
+
+    private fun rounded(color: Int, r: Int, stroke: Int = 0): GradientDrawable {
+        val g = GradientDrawable()
+        g.setColor(color)
+        g.cornerRadius = dp(r).toFloat()
+        if (stroke != 0) g.setStroke(dp(1), stroke)
+        return g
     }
 
     @Suppress("DEPRECATION")
     private fun applyBars() {
-        val base = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
-            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
-            View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        val base = (View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR)
         window.decorView.systemUiVisibility = when {
-            hideBars -> base or
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-                View.SYSTEM_UI_FLAG_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-            siteOpen -> base or
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            hideBars -> (base
+                or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                or View.SYSTEM_UI_FLAG_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION)
+            siteOpen -> (base
+                or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION)
             else -> base
         }
         root.requestApplyInsets()
@@ -120,138 +139,171 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences("mb", MODE_PRIVATE)
-        hideBars   = prefs.getBoolean("hide_status", false)
-        spoofMode  = prefs.getInt("spoof_mode", 0)
+        hideBars  = prefs.getBoolean("hide_status", false)
+        spoofMode = prefs.getInt("spoof_mode", 0)
 
         window.setBackgroundDrawable(ColorDrawable(DARK))
         window.statusBarColor = STRIP
         window.navigationBarColor = DARK
         if (Build.VERSION.SDK_INT >= 28) {
             val lp = window.attributes
-            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            lp.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             window.attributes = lp
         }
 
-        root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(DARK)
-        }
+        root = LinearLayout(this)
+        root.orientation = LinearLayout.VERTICAL
+        root.setBackgroundColor(DARK)
 
-        // Strip
         val stripH = dp(26)
-        strip = FrameLayout(this).apply { setBackgroundColor(STRIP) }
-        val power = PowerView(this).apply {
-            contentDescription = "Close page"
-            setOnClickListener { closePage() }
-        }
-        val powerLp = FrameLayout.LayoutParams(dp(20), dp(20), Gravity.END or Gravity.BOTTOM)
-        powerLp.rightMargin = dp(16); powerLp.bottomMargin = dp(5)
-        strip.addView(power, powerLp)
+        strip = FrameLayout(this)
+        strip.setBackgroundColor(STRIP)
+        val power = PowerView(this)
+        power.contentDescription = "Close page"
+        power.setOnClickListener { closePage() }
+        val plp = FrameLayout.LayoutParams(dp(20), dp(20), Gravity.END or Gravity.BOTTOM)
+        plp.rightMargin = dp(16); plp.bottomMargin = dp(5)
+        strip.addView(power, plp)
         root.addView(strip, LinearLayout.LayoutParams(MATCH_PARENT, stripH))
 
-        stage = FrameLayout(this).apply { setBackgroundColor(DARK) }
+        stage = FrameLayout(this)
+        stage.setBackgroundColor(DARK)
         root.addView(stage, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
 
-        // Overlay dialog
-        overlay = FrameLayout(this).apply {
-            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xFF0F2A45.toInt(), DARK))
-            setPadding(dp(16), dp(16), dp(16), dp(16))
-        }
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = rounded(0xFF07090D.toInt(), 18)
-            clipToOutline = true
-        }
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(ACCENT)
-            setPadding(dp(18), dp(16), dp(18), dp(16))
-        }
-        header.addView(TextView(this).apply {
-            text = "Open a website"; setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 19f); setTypeface(typeface, Typeface.BOLD)
-        })
-        header.addView(TextView(this).apply {
-            text = "Type any address or search"; setTextColor(0xE6FFFFFF.toInt())
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-        })
+        // Dialog overlay
+        overlay = FrameLayout(this)
+        overlay.background = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(0xFF0F2A45.toInt(), DARK)
+        )
+        overlay.setPadding(dp(16), dp(16), dp(16), dp(16))
+
+        val card = LinearLayout(this)
+        card.orientation = LinearLayout.VERTICAL
+        card.background = rounded(0xFF07090D.toInt(), 18)
+        card.clipToOutline = true
+
+        val header = LinearLayout(this)
+        header.orientation = LinearLayout.VERTICAL
+        header.setBackgroundColor(ACCENT)
+        header.setPadding(dp(18), dp(16), dp(18), dp(16))
+        val title = TextView(this)
+        title.text = "Open a website"
+        title.setTextColor(Color.WHITE)
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 19f)
+        title.setTypeface(title.typeface, Typeface.BOLD)
+        header.addView(title)
+        val sub = TextView(this)
+        sub.text = "Type any address or search"
+        sub.setTextColor(0xE6FFFFFF.toInt())
+        sub.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+        header.addView(sub)
         card.addView(header)
 
-        val body = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(18), dp(18), dp(18))
-        }
-        body.addView(TextView(this).apply {
-            text = "Website"; setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, 0, 0, dp(8))
-        })
-        input = EditText(this).apply {
-            hint = "example.com"; setHintTextColor(0xFF6B7587.toInt()); setTextColor(Color.WHITE)
-            background = rounded(FIELD, 12, LINE)
-            setPadding(dp(14), dp(14), dp(14), dp(14))
-            setSingleLine(true)
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            imeOptions = EditorInfo.IME_ACTION_GO
-            setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_GO) { openPage(); true } else false }
+        val body = LinearLayout(this)
+        body.orientation = LinearLayout.VERTICAL
+        body.setPadding(dp(18), dp(18), dp(18), dp(18))
+
+        val lbl = TextView(this)
+        lbl.text = "Website"
+        lbl.setTextColor(Color.WHITE)
+        lbl.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+        lbl.setTypeface(lbl.typeface, Typeface.BOLD)
+        lbl.setPadding(0, 0, 0, dp(8))
+        body.addView(lbl)
+
+        input = EditText(this)
+        input.hint = "example.com"
+        input.setHintTextColor(0xFF6B7587.toInt())
+        input.setTextColor(Color.WHITE)
+        input.background = rounded(FIELD, 12, LINE)
+        input.setPadding(dp(14), dp(14), dp(14), dp(14))
+        input.setSingleLine(true)
+        input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+        input.imeOptions = EditorInfo.IME_ACTION_GO
+        input.setOnEditorActionListener { _, id, _ ->
+            if (id == EditorInfo.IME_ACTION_GO) { openPage(); true } else false
         }
         body.addView(input, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
 
-        // Hide bars checkbox
-        val hideBox = CheckBox(this).apply {
-            text = "Hide status bar and buttons"; setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); isChecked = hideBars
-            setOnCheckedChangeListener { _, c ->
-                hideBars = c; prefs.edit().putBoolean("hide_status", c).apply(); applyBars()
-            }
+        val hideBox = CheckBox(this)
+        hideBox.text = "Hide status bar and buttons"
+        hideBox.setTextColor(Color.WHITE)
+        hideBox.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+        hideBox.isChecked = hideBars
+        hideBox.setOnCheckedChangeListener { _, c ->
+            hideBars = c
+            prefs.edit().putBoolean("hide_status", c).apply()
+            applyBars()
         }
-        body.addView(hideBox, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(12) })
+        val hlp = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
+        hlp.topMargin = dp(12)
+        body.addView(hideBox, hlp)
 
-        // Visibility spoof spinner
-        body.addView(TextView(this).apply {
-            text = "Visibility spoof"; setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); setTypeface(typeface, Typeface.BOLD)
-        }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(14) })
-        val spoofSpinner = Spinner(this).apply {
-            val opts = arrayOf("Off", "Always visible", "Always hidden")
-            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_item, opts).also {
-                it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-            }
-            setSelection(spoofMode)
-            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(p: AdapterView<*>, v: View?, pos: Int, id: Long) {
-                    spoofMode = pos; prefs.edit().putInt("spoof_mode", pos).apply()
-                    svc?.spoofMode = pos
-                }
-                override fun onNothingSelected(p: AdapterView<*>) {}
-            }
-        }
-        body.addView(spoofSpinner, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) })
+        val spoofLbl = TextView(this)
+        spoofLbl.text = "Visibility spoof"
+        spoofLbl.setTextColor(Color.WHITE)
+        spoofLbl.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+        spoofLbl.setTypeface(spoofLbl.typeface, Typeface.BOLD)
+        val slp = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
+        slp.topMargin = dp(14)
+        body.addView(spoofLbl, slp)
 
-        // Buttons
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        fun btn(label: String, bg: Int, border: Int, click: () -> Unit) = Button(this).apply {
-            text = label; isAllCaps = false; setTextColor(Color.WHITE)
-            background = rounded(bg, 10, border); setOnClickListener { click() }
+        val spinner = Spinner(this)
+        val opts = arrayOf("Off", "Always visible", "Always hidden")
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, opts)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinner.adapter = adapter
+        spinner.setSelection(spoofMode)
+        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p: AdapterView<*>, v: View?, pos: Int, id: Long) {
+                spoofMode = pos
+                prefs.edit().putInt("spoof_mode", pos).apply()
+                service?.spoofMode = pos
+            }
+            override fun onNothingSelected(p: AdapterView<*>) {}
         }
-        row.addView(btn("Clear", FIELD, LINE) { input.setText(""); input.requestFocus() },
-            LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(6) })
-        row.addView(btn("Open", ACCENT, ACCENT) { openPage() },
-            LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(6) })
-        body.addView(row, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(14) })
+        val slp2 = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
+        slp2.topMargin = dp(6)
+        body.addView(spinner, slp2)
+
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+
+        val clearBtn = Button(this)
+        clearBtn.text = "Clear"; clearBtn.isAllCaps = false
+        clearBtn.setTextColor(Color.WHITE)
+        clearBtn.background = rounded(FIELD, 10, LINE)
+        clearBtn.setOnClickListener { input.setText(""); input.requestFocus() }
+        val clp = LinearLayout.LayoutParams(0, dp(48), 1f)
+        clp.rightMargin = dp(6)
+        row.addView(clearBtn, clp)
+
+        val openBtn = Button(this)
+        openBtn.text = "Open"; openBtn.isAllCaps = false
+        openBtn.setTextColor(Color.WHITE)
+        openBtn.background = rounded(ACCENT, 10, ACCENT)
+        openBtn.setOnClickListener { openPage() }
+        val olp = LinearLayout.LayoutParams(0, dp(48), 1f)
+        olp.leftMargin = dp(6)
+        row.addView(openBtn, olp)
+
+        val rlp = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
+        rlp.topMargin = dp(14)
+        body.addView(row, rlp)
         card.addView(body)
         overlay.addView(card, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.CENTER))
         stage.addView(overlay, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
 
         setContentView(root)
 
-        // Insets: white strip grows to cover status bar; bottom padding only when nav visible
         root.setOnApplyWindowInsetsListener { v, insets ->
             val top = insets.systemWindowInsetTop
             val bot = insets.systemWindowInsetBottom
-            val lp = strip.layoutParams as LinearLayout.LayoutParams
-            lp.height = stripH + top
-            strip.layoutParams = lp
+            val lp2 = strip.layoutParams as LinearLayout.LayoutParams
+            lp2.height = stripH + top
+            strip.layoutParams = lp2
             strip.setPadding(0, top, 0, 0)
             v.setPadding(0, 0, 0, if (siteOpen) 0 else bot)
             insets.consumeSystemWindowInsets()
@@ -259,7 +311,6 @@ class MainActivity : Activity() {
 
         applyBars()
 
-        // Start and bind service
         val intent = Intent(this, BrowserService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
         else startService(intent)
@@ -278,16 +329,16 @@ class MainActivity : Activity() {
         val url = normalize(input.text.toString()); if (url.isEmpty()) return
         (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
             .hideSoftInputFromWindow(input.windowToken, 0)
-        svc?.loadUrl(url)
+        service?.loadUrl(url)
         siteOpen = true
         overlay.visibility = View.GONE
-        svc?.webView?.visibility = View.VISIBLE
+        service?.webView?.visibility = View.VISIBLE
         applyBars()
     }
 
     private fun closePage() {
-        svc?.clearPage()
-        svc?.webView?.visibility = View.GONE
+        service?.clearPage()
+        service?.webView?.visibility = View.GONE
         siteOpen = false
         overlay.visibility = View.VISIBLE
         input.setText("")
@@ -296,14 +347,12 @@ class MainActivity : Activity() {
 
     override fun onStop() {
         super.onStop()
-        // Detach WebView from window so it keeps running in service
-        svc?.webView?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        service?.webView?.let { (it.parent as? ViewGroup)?.removeView(it) }
     }
 
     override fun onStart() {
         super.onStart()
-        // Re-attach WebView when coming back
-        svc?.webView?.let { wv ->
+        service?.webView?.let { wv ->
             (wv.parent as? ViewGroup)?.removeView(wv)
             stage.addView(wv, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
             if (siteOpen) {
@@ -314,7 +363,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
-        try { unbindService(conn) } catch (_: Exception) {}
+        try { unbindService(conn) } catch (e: Exception) { /* ignore */ }
         super.onDestroy()
     }
 
@@ -322,7 +371,7 @@ class MainActivity : Activity() {
     override fun onBackPressed() {
         if (overlay.visibility == View.VISIBLE) {
             super.onBackPressed()
-        } else if (svc?.goBack() != true) {
+        } else if (service?.goBack() != true) {
             closePage()
         }
     }
