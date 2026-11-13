@@ -322,7 +322,7 @@ class MainActivity : Activity() {
     override fun onBackPressed() {
         when {
             overlay.visibility == View.VISIBLE -> super.onBackPressed()
-            svc?.goBack() == true -> {}
+            svc?.goBack() == true -> Unit
             else -> closePage()
         }
     }
